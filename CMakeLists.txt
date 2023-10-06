@@ -21,120 +21,119 @@ else()
   message(ERROR "ROS_DISTRO environment variable is not set!")
 endif()
 
+
+
+# find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
-find_package(image_transport REQUIRED)
-find_package(cv_bridge REQUIRED)
-find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rcutils REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(ffmpeg_image_transport_msgs REQUIRED) 
 find_package(sensor_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(ffmpeg_image_transport_msgs REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+find_package(python_cmake_module REQUIRED)
 
 find_package(OpenCV REQUIRED imgproc)
+find_package(pybind11 REQUIRED)
+_ament_cmake_python_register_environment_hook()
 
-set(FFMPEG_PKGCONFIG "" CACHE STRING "extra path to pkgconfig")
-if("${FFMPEG_PKGCONFIG}" STREQUAL "")
-else()
-  message(WARNING "using FFMPEG package from ${FFMPEG_PKGCONFIG}")
-endif()
+pybind11_add_module(ffmpeg_bindings src/ffmpeg_decoder_pybind.cpp)
 
-set(ENV{PKG_CONFIG_PATH} ${FFMPEG_PKGCONFIG})
-find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
-    libavcodec
-    libswresample
-    libswscale
-    libavutil)
+###HACK : ament_target_dependencies cannot declare its deps as private, which is needed for pybind11.. so copypaste
+function(ament_target_dependencies_private target)
+  if(NOT TARGET ${target})
+    message(FATAL_ERROR "ament_target_dependencies() the first argument must be a valid target name")
+  endif()
+  if(${ARGC} GREATER 0)
+    set(definitions "")
+    set(include_dirs "")
+    set(libraries "")
+    set(link_flags "")
+    foreach(package_name ${ARGN})
+      if(NOT ${${package_name}_FOUND})
+        message(FATAL_ERROR "ament_target_dependencies() the passed package name '${package_name}' was not found before")
+      endif()
+      list_append_unique(definitions ${${package_name}_DEFINITIONS})
+      list_append_unique(include_dirs ${${package_name}_INCLUDE_DIRS})
+      list(APPEND libraries ${${package_name}_LIBRARIES})
+      list_append_unique(link_flags ${${package_name}_LINK_FLAGS})
+    endforeach()
+    target_compile_definitions(${target}
+      PUBLIC ${definitions})
+    ament_include_directories_order(ordered_include_dirs ${include_dirs})
+    target_include_directories(${target}
+      PUBLIC ${ordered_include_dirs})
+    ament_libraries_deduplicate(unique_libraries ${libraries})
+    target_link_libraries(${target} PRIVATE
+      ${unique_libraries})
+    foreach(link_flag IN LISTS link_flags)
+      set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS " ${link_flag} ")
+    endforeach()
+  endif()
+endfunction()
 
-set(LIBRARY_NAME ${PROJECT_NAME}_component)
 
-add_library(
-  ${LIBRARY_NAME}
-  SHARED
-  src/ffmpeg_publisher.cpp
-  src/ffmpeg_subscriber.cpp
-  src/ffmpeg_encoder.cpp
-  src/ffmpeg_decoder.cpp
-  src/tdiff.cpp
-  src/utils.cpp
-  src/manifest.cpp)
 
-target_include_directories(${LIBRARY_NAME} PRIVATE
-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>")
+set_target_properties(ffmpeg_bindings PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}"
+                                         SUFFIX "${PYTHON_MODULE_EXTENSION}")
 
-ament_target_dependencies(${LIBRARY_NAME}
-  cv_bridge
-  image_transport
-  pluginlib
-  rclcpp
-  sensor_msgs
-  ffmpeg_image_transport_msgs)
 
-target_link_libraries(${LIBRARY_NAME} opencv_imgproc PkgConfig::LIBAV)
+target_include_directories(ffmpeg_bindings PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  )
 
-add_executable(test_encoder
-  test/test_encoder.cpp)
-
-target_link_libraries(test_encoder ${LIBRARY_NAME})
-target_include_directories(test_encoder PRIVATE include)
-ament_target_dependencies(test_encoder cv_bridge rclcpp sensor_msgs ffmpeg_image_transport_msgs)
-
-ament_export_dependencies(
-  OpenCV
-  cv_bridge
-  image_transport
-  pluginlib
-  rclcpp
-  rcutils
-  sensor_msgs
-  std_msgs
-  ffmpeg_image_transport_msgs)
-
-install(TARGETS ${LIBRARY_NAME} EXPORT export_${LIBRARY_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin)
-
-install(TARGETS test_encoder
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin)
-
-ament_export_targets(export_${LIBRARY_NAME})
-
-install(DIRECTORY
-  launch
-  DESTINATION share/${PROJECT_NAME}/
-  FILES_MATCHING PATTERN "*.py")
-
+  
+  
+ament_target_dependencies_private(
+  ffmpeg_bindings
+  "rclcpp"
+  "cv_bridge" 
+  "sensor_msgs"
+  "camera_info_manager"
+  "OpenCV"
+  "camera_calibration_parsers"
+  "ffmpeg_image_transport_msgs"
+  "pybind11::module"
+)
 install(
   DIRECTORY include/
-  DESTINATION include/${PROJECT_NAME})
+  DESTINATION include
+)
+install(
+  TARGETS ffmpeg_bindings
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
-pluginlib_export_plugin_description_file(image_transport ffmpeg_plugins.xml)
+install(
+  TARGETS ffmpeg_bindings
+  DESTINATION "${PYTHON_INSTALL_DIR}"
+)
+
 
 if(BUILD_TESTING)
-  find_package(ament_cmake REQUIRED)
-  find_package(ament_cmake_copyright REQUIRED)
-  find_package(ament_cmake_cppcheck REQUIRED)
-  find_package(ament_cmake_cpplint REQUIRED)
-  find_package(ament_cmake_flake8 REQUIRED)
-  find_package(ament_cmake_lint_cmake REQUIRED)
-  find_package(ament_cmake_clang_format REQUIRED)
-  find_package(ament_cmake_pep257 REQUIRED)
-  find_package(ament_cmake_xmllint REQUIRED)
-
-  ament_copyright()
-  ament_cppcheck(LANGUAGE c++)
-  ament_cpplint(FILTERS "-build/include,-runtime/indentation_namespace")
-  ament_flake8()
-  ament_lint_cmake()
-  ament_pep257()
-  ament_clang_format(CONFIG_FILE .clang-format)
-  ament_xmllint()
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # remove the line when a copyright and license is present in all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # remove the line when this package is a git repo
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
 endif()
+
+ament_export_include_directories(
+  include
+)
+ament_export_interfaces(
+  export_${PROJECT_NAME}
+)
+ament_export_libraries(
+  ffmpeg_bindings
+)
 
 ament_package()
