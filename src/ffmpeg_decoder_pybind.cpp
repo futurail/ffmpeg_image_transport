@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
-// #include "ffmpeg_image_transport/ffmpeg_decoder.hpp"
+#include "ffmpeg_image_transport/ffmpeg_decoder.hpp"
 
-// #include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.h>
 
 #include <fstream>
 #include <iomanip>
