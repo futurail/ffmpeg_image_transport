@@ -38,10 +38,34 @@ find_package(OpenCV REQUIRED imgproc)
 find_package(pybind11 REQUIRED)
 _ament_cmake_python_register_environment_hook()
 
+set(FFMPEG_PKGCONFIG "" CACHE STRING "extra path to pkgconfig")
+if("${FFMPEG_PKGCONFIG}" STREQUAL "")
+else()
+  message(WARNING "using FFMPEG package from ${FFMPEG_PKGCONFIG}")
+endif()
+
+set(ENV{PKG_CONFIG_PATH} ${FFMPEG_PKGCONFIG})
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
+    libavcodec
+    libswresample
+    libswscale
+    libavutil)
+
+
+
+
 # Cannot use pybind11_add_module, since it uses the keyword version of target_link_libraries (PUBLIC, PRIVATE, ...),
 # so we create it ourselves.
-add_library(ffmpeg_bindings SHARED src/ffmpeg_decoder_pybind.cpp)
+add_library(ffmpeg_bindings SHARED 
+src/ffmpeg_decoder_pybind.cpp
+  src/ffmpeg_encoder.cpp
+  src/ffmpeg_decoder.cpp
+  src/tdiff.cpp
+  src/utils.cpp
 
+  )
 set_target_properties(ffmpeg_bindings PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}"
                                          SUFFIX "${PYTHON_MODULE_EXTENSION}")
 
