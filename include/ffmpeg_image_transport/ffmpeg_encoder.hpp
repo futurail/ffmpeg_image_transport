@@ -108,13 +108,24 @@ public:
     Lock lock(mutex_);
     return (codecContext_ != NULL);
   }
-  bool initialize(int width, int height, Callback callback);
+  bool initialize(int width, int height);
   void setLogger(rclcpp::Logger logger) { logger_ = logger; }
   void setParameters(rclcpp::Node * node);
+  void setParameters(
+        const std::string &encoding = "libx264",
+        const std::string &profile = "",
+        const std::string &preset = "",
+        const std::string &tune = "",
+        int qmax = 10,
+        int64_t bitRate = 8242880,
+        int64_t GOPSize = 15,
+        const std::string &pixel_format = ""
+    );
   void reset();
   // encode image
-  void encodeImage(const cv::Mat & img, const Header & header, const rclcpp::Time & t0);
-  void encodeImage(const Image & msg);
+  FFMPEGPacket encodeImage(const cv::Mat & img, const Header & header, const rclcpp::Time & t0);
+  FFMPEGPacket encodeImage(const Image & msg);
+  FFMPEGPacket encodeImage(const std::vector<uint8_t> & serializedImageMsg);
   // ------- performance statistics
   void printTimers(const std::string & prefix) const;
   void resetTimers();
@@ -125,7 +136,7 @@ private:
   bool openCodec(int width, int height);
   void doOpenCodec(int width, int height);
   void closeCodec();
-  int drainPacket(const Header & hdr, int width, int height);
+  FFMPEGPacket drainPacket(const Header & hdr, int width, int height);
   AVPixelFormat pixelFormat(const std::string & f) const;
   void openVAAPIDevice(const AVCodec * codec, int width, int height);
   void setAVOption(const std::string & field, const std::string & value);

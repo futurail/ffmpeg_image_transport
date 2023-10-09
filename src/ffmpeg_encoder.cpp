@@ -14,7 +14,7 @@
 // limitations under the License.
 
 #include "ffmpeg_image_transport/ffmpeg_encoder.hpp"
-
+#include "ffmpeg_image_transport/serialization.hpp"
 #include <cv_bridge/cv_bridge.h>
 
 #include <fstream>
@@ -101,10 +101,34 @@ void FFMPEGEncoder::setParameters(rclcpp::Node * node)
     logger_, "qmax: " << qmax_ << " bitrate: " << bitRate_ << " gop: " << GOPSize_);
 }
 
-bool FFMPEGEncoder::initialize(int width, int height, Callback callback)
+void FFMPEGEncoder::setParameters(
+    const std::string &encoding,
+    const std::string &profile,
+    const std::string &preset,
+    const std::string &tune,
+    int qmax,
+    int64_t bitRate,
+    int64_t GOPSize,
+    const std::string &pixel_format){
+    Lock lock(mutex_);
+      const std::string ns = "ffmpeg_image_transport.";
+    codecName_ = encoding;
+    profile_ = profile;
+    preset_ = preset;
+    tune_ = tune;
+    qmax_ = qmax;
+    bitRate_ = bitRate;
+    GOPSize_ = GOPSize;
+    pixFormat_ = pixelFormat(pixel_format);
+    RCLCPP_INFO_STREAM(
+      logger_, "enc: " << codecName_ << " prof: " << profile_ << " preset: " << preset_);
+    RCLCPP_INFO_STREAM(
+      logger_, "qmax: " << qmax_ << " bitrate: " << bitRate_ << " gop: " << GOPSize_);
+  }
+bool FFMPEGEncoder::initialize(int width, int height)
 {
   Lock lock(mutex_);
-  callback_ = callback;
+  // callback_ = callback;
   return (openCodec(width, height));
 }
 
@@ -292,8 +316,10 @@ void FFMPEGEncoder::setAVOption(const std::string & field, const std::string & v
   }
 }
 
-void FFMPEGEncoder::encodeImage(const Image & msg)
+FFMPEGPacket FFMPEGEncoder::encodeImage(const Image & msg)
 {
+  
+ 
   rclcpp::Time t0;
   if (measurePerformance_) {
     t0 = rclcpp::Clock().now();
@@ -302,14 +328,17 @@ void FFMPEGEncoder::encodeImage(const Image & msg)
   // the encoder supports monochrome.
 
   cv::Mat img = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8)->image;
+
+ 
   encodeImage(img, msg.header, t0);
+  
   if (measurePerformance_) {
     const auto t1 = rclcpp::Clock().now();
     tdiffDebayer_.update((t1 - t0).seconds());
   }
 }
 
-void FFMPEGEncoder::encodeImage(const cv::Mat & img, const Header & header, const rclcpp::Time & t0)
+FFMPEGPacket FFMPEGEncoder::encodeImage(const cv::Mat & img, const Header & header, const rclcpp::Time & t0)
 {
   Lock lock(mutex_);
   rclcpp::Time t1, t2, t3;
@@ -349,59 +378,76 @@ void FFMPEGEncoder::encodeImage(const cv::Mat & img, const Header & header, cons
     tdiffSendFrame_.update((t3 - t2).seconds());
   }
   // now drain all packets
-  while (ret == 0) {
-    ret = drainPacket(header, img.cols, img.rows);
-  }
+  
+
+  
   if (measurePerformance_) {
     const rclcpp::Time t4 = rclcpp::Clock().now();
     tdiffTotal_.update((t4 - t0).seconds());
   }
+  // if (ret == 0) {
+
+  FFMPEGPacket packet_ =  drainPacket(header, img.cols, img.rows);
+  std::cout << "Packet Size: " << packet_.width << std::endl;
+  return packet_;
+  
+
+  // }
+}
+FFMPEGPacket FFMPEGEncoder::drainPacket(const Header &header, int width, int height)
+{
+    rclcpp::Time t0, t1, t2;
+    if (measurePerformance_) {
+        t0 = rclcpp::Clock().now();
+    }
+    int ret = avcodec_receive_packet(codecContext_, packet_);
+    if (measurePerformance_) {
+        t1 = rclcpp::Clock().now();
+        tdiffReceivePacket_.update((t1 - t0).seconds());
+    }
+
+    if (ret == 0 && packet_->size > 0) {
+        FFMPEGPacket packet;
+        packet.data.resize(packet_->size);
+        packet.width = width;
+        packet.height = height;
+        packet.pts = packet_->pts;
+        packet.flags = packet_->flags;
+
+        std::cout << "Draining Packets" << std::endl;
+        memcpy(&(packet.data[0]), packet_->data, packet_->size);
+
+        if (measurePerformance_) {
+            t2 = rclcpp::Clock().now();
+            totalOutBytes_ += packet_->size;
+            tdiffCopyOut_.update((t2 - t1).seconds());
+        }
+
+        packet.header = header;
+        auto it = ptsToStamp_.find(packet_->pts);
+        if (it != ptsToStamp_.end()) {
+            packet.header.stamp = it->second;
+            packet.encoding = codecName_;
+            // callback_(&packet); // deliver packet callback with pointer to the packet object
+            if (measurePerformance_) {
+                const auto t3 = rclcpp::Clock().now();
+                tdiffPublish_.update((t3 - t2).seconds());
+            }
+            ptsToStamp_.erase(it);
+        } else {
+            RCLCPP_ERROR_STREAM(logger_, "pts " << packet_->pts << " has no time stamp!");
+        }
+
+        av_packet_unref(packet_);  // free packet allocated by encoder
+        return packet;
+    }
+
+    // Handle the case where there is no valid packet to return
+    FFMPEGPacket emptyPacket;
+    std::cout << "Sending Empty Packet" << std::endl;
+    return emptyPacket;
 }
 
-int FFMPEGEncoder::drainPacket(const Header & header, int width, int height)
-{
-  rclcpp::Time t0, t1, t2;
-  if (measurePerformance_) {
-    t0 = rclcpp::Clock().now();
-  }
-  int ret = avcodec_receive_packet(codecContext_, packet_);
-  if (measurePerformance_) {
-    t1 = rclcpp::Clock().now();
-    tdiffReceivePacket_.update((t1 - t0).seconds());
-  }
-  const AVPacket & pk = *packet_;
-  if (ret == 0 && pk.size > 0) {
-    FFMPEGPacket * packet = new FFMPEGPacket;
-    FFMPEGPacketConstPtr pptr(packet);
-    packet->data.resize(pk.size);
-    packet->width = width;
-    packet->height = height;
-    packet->pts = pk.pts;
-    packet->flags = pk.flags;
-    memcpy(&(packet->data[0]), pk.data, pk.size);
-    if (measurePerformance_) {
-      t2 = rclcpp::Clock().now();
-      totalOutBytes_ += pk.size;
-      tdiffCopyOut_.update((t2 - t1).seconds());
-    }
-    packet->header = header;
-    auto it = ptsToStamp_.find(pk.pts);
-    if (it != ptsToStamp_.end()) {
-      packet->header.stamp = it->second;
-      packet->encoding = codecName_;
-      callback_(pptr);  // deliver packet callback
-      if (measurePerformance_) {
-        const auto t3 = rclcpp::Clock().now();
-        tdiffPublish_.update((t3 - t2).seconds());
-      }
-      ptsToStamp_.erase(it);
-    } else {
-      RCLCPP_ERROR_STREAM(logger_, "pts " << pk.pts << " has no time stamp!");
-    }
-    av_packet_unref(packet_);  // free packet allocated by encoder
-  }
-  return (ret);
-}
 
 void FFMPEGEncoder::printTimers(const std::string & prefix) const
 {

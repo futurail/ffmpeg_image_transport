@@ -33,7 +33,7 @@ find_package(camera_info_manager REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(python_cmake_module REQUIRED)
-
+find_package(rosidl_runtime_cpp REQUIRED)
 find_package(OpenCV REQUIRED imgproc)
 find_package(pybind11 REQUIRED)
 _ament_cmake_python_register_environment_hook()
@@ -65,6 +65,7 @@ src/ffmpeg_decoder_pybind.cpp
   src/tdiff.cpp
   src/utils.cpp
 
+
   )
 set_target_properties(ffmpeg_bindings PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}"
                                          SUFFIX "${PYTHON_MODULE_EXTENSION}")
@@ -77,7 +78,7 @@ target_include_directories(ffmpeg_bindings PUBLIC
 
 
 target_include_directories(ffmpeg_bindings PUBLIC ${rclcpp_INCLUDE_DIRS})
-
+target_link_libraries(ffmpeg_bindings opencv_imgproc PkgConfig::LIBAV)
 ament_target_dependencies(
   ffmpeg_bindings
   rclcpp
@@ -87,6 +88,7 @@ ament_target_dependencies(
   OpenCV
   camera_calibration_parsers
   ffmpeg_image_transport_msgs
+  rosidl_runtime_cpp
 )
 target_link_libraries(ffmpeg_bindings pybind11::module)
 
