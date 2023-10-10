@@ -15,7 +15,7 @@ bag = BagFileParser(rosbag_path)
 
 
 msg = ffmpeg_bindings.cpp2py_img(10, 10)
-print(ffmpeg_bindings.cpp2py_ffmpeg(10, 10))
+# print(ffmpeg_bindings.cpp2py_ffmpeg(10, 10))
 topic = '/deg120/image'
 encoder.setParameters("libx264", "", "", "", 10, 8242880, 0, "")
 encoder.initialize(1920, 1080)

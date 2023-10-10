@@ -32,7 +32,7 @@ ffmpeg_image_transport_msgs::msg::FFMPEGPacket cpp2py_ffmpeg(int width, int heig
   ffmpeg_image_transport_msgs::msg::FFMPEGPacket msg;
   msg.header.stamp = rclcpp::Clock().now();  // Set the timestamp to the current time
   msg.header.frame_id = "ffmpeg_frame";      // Set the frame ID
-  const std::string & encoding = "h264";
+  const std::string  encoding = "h264";
   uint64_t pts = 0;
   uint8_t flags = 0;
   msg.width = width;

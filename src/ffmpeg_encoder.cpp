@@ -26,6 +26,31 @@
 
 namespace ffmpeg_image_transport
 {
+
+  FFMPEGPacket cpp2py_ffmpeg2(int width, int height)
+{
+  FFMPEGPacket msg;
+  msg.header.stamp = rclcpp::Clock().now();  // Set the timestamp to the current time
+  msg.header.frame_id = "ffmpeg_frame";      // Set the frame ID
+  const std::string encoding = "h264";
+  uint64_t pts = 0;
+  uint8_t flags = 0;
+  msg.width = width;
+  msg.height = height;
+  msg.encoding = encoding;
+  msg.pts = pts;
+  msg.flags = flags;
+
+  // Dummy data (filling with random values for demonstration)
+  msg.data.resize(width * height);
+  for (int i = 0; i < height; ++i) {
+    for (int j = 0; j < width; ++j) {
+      msg.data.push_back(width * i + j);
+    }
+  }
+  return msg; 
+}
+
 FFMPEGEncoder::FFMPEGEncoder() : logger_(rclcpp::get_logger("FFMPEGEncoder")) {}
 
 FFMPEGEncoder::~FFMPEGEncoder()
@@ -402,7 +427,8 @@ FFMPEGPacket FFMPEGEncoder::encodeImage(const cv::Mat & img, const Header & head
 
 
    std::cout << "Sending Empty Packet2 " << packet_.encoding << std::endl;
-  return packet_;
+   FFMPEGPacket new_packet = cpp2py_ffmpeg2(10, 10); 
+  return new_packet;
   
 
   // }
@@ -461,7 +487,7 @@ FFMPEGPacket FFMPEGEncoder::drainPacket(const Header &header, int width, int hei
     
   emptyPacket.header.stamp = rclcpp::Clock().now();  // Set the timestamp to the current time
   emptyPacket.header.frame_id = "ffmpeg_frame";      // Set the frame ID
-  const std::string & encoding = "h264";
+  std::string encoding = "h264";
   uint64_t pts = 0;
   uint8_t flags = 0;
   int defaultWidth = 10;
