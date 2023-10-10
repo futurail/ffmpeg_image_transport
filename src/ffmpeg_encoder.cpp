@@ -388,7 +388,20 @@ FFMPEGPacket FFMPEGEncoder::encodeImage(const cv::Mat & img, const Header & head
   // if (ret == 0) {
 
   FFMPEGPacket packet_ =  drainPacket(header, img.cols, img.rows);
-  std::cout << "Packet Size: " << packet_.width << std::endl;
+  // printing out ffmpegpacket 
+  //   emptyPacket.width = defaultWidth;
+  // emptyPacket.height = defaultHeight;
+  // emptyPacket.encoding = encoding;
+  // emptyPacket.pts = pts;
+  // emptyPacket.flags = flags;
+  std::cout << "Width: " << packet_.width << std::endl;
+  std::cout << "Height: " << packet_.height << std::endl;
+  std::cout << "Encoding: " << packet_.encoding << std::endl;
+  std::cout << "PTS: " << packet_.pts << std::endl;
+  std::cout << "Flags: " << packet_.flags << std::endl;
+
+
+   std::cout << "Sending Empty Packet2 " << packet_.encoding << std::endl;
   return packet_;
   
 
@@ -413,7 +426,7 @@ FFMPEGPacket FFMPEGEncoder::drainPacket(const Header &header, int width, int hei
         packet.height = height;
         packet.pts = packet_->pts;
         packet.flags = packet_->flags;
-
+        
         std::cout << "Draining Packets" << std::endl;
         memcpy(&(packet.data[0]), packet_->data, packet_->size);
 
@@ -427,6 +440,7 @@ FFMPEGPacket FFMPEGEncoder::drainPacket(const Header &header, int width, int hei
         auto it = ptsToStamp_.find(packet_->pts);
         if (it != ptsToStamp_.end()) {
             packet.header.stamp = it->second;
+            
             packet.encoding = codecName_;
             // callback_(&packet); // deliver packet callback with pointer to the packet object
             if (measurePerformance_) {
@@ -444,7 +458,30 @@ FFMPEGPacket FFMPEGEncoder::drainPacket(const Header &header, int width, int hei
 
     // Handle the case where there is no valid packet to return
     FFMPEGPacket emptyPacket;
-    std::cout << "Sending Empty Packet" << std::endl;
+    
+  emptyPacket.header.stamp = rclcpp::Clock().now();  // Set the timestamp to the current time
+  emptyPacket.header.frame_id = "ffmpeg_frame";      // Set the frame ID
+  const std::string & encoding = "h264";
+  uint64_t pts = 0;
+  uint8_t flags = 0;
+  int defaultWidth = 10;
+  int defaultHeight = 10;
+  emptyPacket.width = defaultWidth;
+  emptyPacket.height = defaultHeight;
+  emptyPacket.encoding = encoding;
+  emptyPacket.pts = pts;
+  emptyPacket.flags = flags;
+
+  // Dummy data (filling with random values for demonstration)
+  emptyPacket.data.resize(width * height);
+  for (int i = 0; i < height; ++i) {
+    for (int j = 0; j < width; ++j) {
+      emptyPacket.data.push_back(width * i + j);
+    }
+  }
+
+    std::cout << "Sending Empty Packet1 " << emptyPacket.encoding << std::endl;
+      std::cout << "emptyPacket.encoding type: " << typeid(emptyPacket.encoding).name() << std::endl;
     return emptyPacket;
 }
 
